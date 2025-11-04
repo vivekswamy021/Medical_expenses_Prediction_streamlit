@@ -1,5 +1,3 @@
-# medical_expense_app.py
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -8,22 +6,28 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
 from sklearn.linear_model import LinearRegression, Lasso, Ridge, ElasticNet
 from sklearn.metrics import mean_squared_error, r2_score
+import io
 import warnings
-warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore")
 
 # ---------------------------------------------------------------
 # PAGE CONFIGURATION
 # ---------------------------------------------------------------
 st.set_page_config(page_title="Medical Expense Predictor", layout="wide")
 st.title("💉 Medical Expense Prediction App")
-st.markdown("### Predicting patient medical expenses using multiple regression models.")
+st.markdown("### Predict medical expenses based on patient's profile using Regression Models")
 
 # ---------------------------------------------------------------
 # STEP 1: BUSINESS PROBLEM
 # ---------------------------------------------------------------
 st.subheader("📘 STEP 1: Business Problem Understanding")
 st.write("""
-Predict medical expenses based on patient's details such as age, sex, BMI, smoker status, and number of children.
+Predict patient medical expenses based on demographic and lifestyle factors such as:
+- Age
+- Sex
+- BMI
+- Smoking status
+- Number of children
 """)
 
 # ---------------------------------------------------------------
@@ -31,175 +35,184 @@ Predict medical expenses based on patient's details such as age, sex, BMI, smoke
 # ---------------------------------------------------------------
 st.subheader("📂 STEP 2: Load and Collect Data")
 
-uploaded_file = st.file_uploader("Upload your insurance dataset (Excel format)", type=["xlsx"])
+uploaded_file = st.file_uploader("Upload your insurance dataset (.xlsx)", type=["xlsx"])
+
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
-    st.success("✅ Data loaded successfully!")
-    st.write("### Preview of Dataset")
+    st.success("✅ File uploaded and data loaded successfully!")
+
+    st.write("### 📋 Dataset Preview")
     st.dataframe(df.head())
 
-    # ---------------------------------------------------------------
     # DATA UNDERSTANDING
-    # ---------------------------------------------------------------
     st.subheader("🔍 Data Understanding")
-    with st.expander("View Dataset Info"):
-        buffer = []
-        df.info(buf=buffer)
-        info_str = "\n".join(buffer)
-        st.text(info_str)
+    buffer = io.StringIO()
+    df.info(buf=buffer)
+    s = buffer.getvalue()
+    st.text(s)
 
     st.write("**Shape:**", df.shape)
     st.write("**Columns:**", list(df.columns))
-    st.write("**Size:**", df.size)
+    st.write("**Null Values:**", df.isnull().sum().sum())
+    st.write("**Duplicate Rows:**", df.duplicated().sum())
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.write("Sex counts:")
-        st.write(df["sex"].value_counts())
+        st.write("Sex Distribution:")
+        st.bar_chart(df["sex"].value_counts())
     with col2:
-        st.write("Smoker counts:")
-        st.write(df["smoker"].value_counts())
+        st.write("Smoker Distribution:")
+        st.bar_chart(df["smoker"].value_counts())
     with col3:
-        st.write("Region counts:")
-        st.write(df["region"].value_counts())
+        st.write("Region Distribution:")
+        st.bar_chart(df["region"].value_counts())
 
     # ---------------------------------------------------------------
-    # EXPLORATORY DATA ANALYSIS
+    # STEP 3: EXPLORATORY DATA ANALYSIS
     # ---------------------------------------------------------------
-    st.subheader("📊 Exploratory Data Analysis")
+    st.subheader("📊 STEP 3: Exploratory Data Analysis")
+
     continous = ['age', 'bmi', 'expenses']
     discrete_categorical = ['sex', 'smoker', 'region']
 
-    st.write("#### Continuous Feature Description")
+    st.write("### Continuous Variables Summary")
     st.dataframe(df[continous].describe())
 
-    st.write("#### Correlation Heatmap")
+    st.write("### Correlation Heatmap")
     fig, ax = plt.subplots()
     sns.heatmap(df[continous].corr(), annot=True, cmap="coolwarm", ax=ax)
     st.pyplot(fig)
 
-    st.write("#### Pair Plot of Continuous Variables")
-    st.pyplot(sns.pairplot(df[continous]))
+    st.write("### Pairplot of Continuous Features")
+    pair_fig = sns.pairplot(df[continous])
+    st.pyplot(pair_fig.fig)
 
-    st.write("#### Scatter Plot: BMI vs Expenses")
+    st.write("### Scatterplot: BMI vs Expenses")
     fig, ax = plt.subplots()
-    sns.scatterplot(x='bmi', y='expenses', hue='sex', data=df, ax=ax)
+    sns.scatterplot(x="bmi", y="expenses", hue="sex", data=df, ax=ax)
     st.pyplot(fig)
 
     # ---------------------------------------------------------------
-    # DATA PREPROCESSING
+    # STEP 4: DATA PREPROCESSING
     # ---------------------------------------------------------------
-    st.subheader("⚙️ STEP 3: Data Preprocessing")
+    st.subheader("⚙️ STEP 4: Data Preprocessing")
 
-    st.write("Missing values:", df.isnull().sum().sum())
-    st.write("Duplicate rows:", df.duplicated().sum())
-
+    # Drop duplicates
     df.drop_duplicates(inplace=True)
 
-    # Drop region as it’s not significant
-    df.drop('region', axis=1, inplace=True)
+    # Drop region (low impact)
+    if "region" in df.columns:
+        df.drop("region", axis=1, inplace=True)
 
-    # Encoding
-    df['sex'].replace({'male': 1, 'female': 0}, inplace=True)
-    df['smoker'].replace({'yes': 1, 'no': 0}, inplace=True)
+    # Encode categorical columns
+    df["sex"].replace({"male": 1, "female": 0}, inplace=True)
+    df["smoker"].replace({"yes": 1, "no": 0}, inplace=True)
 
-    st.write("✅ Data after preprocessing:")
+    st.write("✅ Cleaned Data Preview")
     st.dataframe(df.head())
 
     # ---------------------------------------------------------------
-    # MODELING SECTION
+    # STEP 5: MODEL TRAINING
     # ---------------------------------------------------------------
-    st.subheader("🤖 STEP 4: Model Building and Evaluation")
+    st.subheader("🤖 STEP 5: Model Training")
 
-    x = df.drop('expenses', axis=1)
-    y = df['expenses']
+    X = df.drop("expenses", axis=1)
+    y = df["expenses"]
 
-    test_size = st.slider("Select Test Size (for Train-Test Split)", 0.1, 0.5, 0.2)
-    random_state = st.number_input("Random State", value=9, step=1)
+    test_size = st.slider("Test Size", 0.1, 0.5, 0.2)
+    random_state = st.number_input("Random State", min_value=0, max_value=100, value=9, step=1)
 
-    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=test_size, random_state=random_state)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
 
     model_option = st.selectbox(
-        "Choose Regression Model",
+        "Select Regression Model",
         ["Linear Regression", "Lasso Regression", "Ridge Regression", "ElasticNet Regression"]
     )
 
     if st.button("🚀 Train Model"):
+        # Model selection
         if model_option == "Linear Regression":
             model = LinearRegression()
-            model.fit(x_train, y_train)
 
         elif model_option == "Lasso Regression":
-            alpha = st.slider("Select Alpha (Regularization Strength)", 1, 100, 60)
+            alpha = st.slider("Lasso Alpha", 1, 100, 60)
             model = Lasso(alpha=alpha)
-            model.fit(x_train, y_train)
 
         elif model_option == "Ridge Regression":
-            alpha = st.slider("Select Alpha (Regularization Strength)", 1, 100, 10)
+            alpha = st.slider("Ridge Alpha", 1, 100, 10)
             model = Ridge(alpha=alpha)
-            model.fit(x_train, y_train)
 
         elif model_option == "ElasticNet Regression":
             alpha = st.select_slider("Alpha", options=[0.1, 0.2, 1, 2, 5, 10], value=10.0)
             l1_ratio = st.select_slider("L1 Ratio", options=[0.2, 0.4, 0.6, 0.8, 1.0], value=1.0)
             model = ElasticNet(alpha=alpha, l1_ratio=l1_ratio)
-            model.fit(x_train, y_train)
 
-        # Prediction and Metrics
-        y_pred_train = model.predict(x_train)
-        y_pred_test = model.predict(x_test)
+        # Fit model
+        model.fit(X_train, y_train)
 
-        train_rmse = np.sqrt(mean_squared_error(y_train, y_pred_train))
-        test_rmse = np.sqrt(mean_squared_error(y_test, y_pred_test))
-        train_r2 = r2_score(y_train, y_pred_train)
-        test_r2 = r2_score(y_test, y_pred_test)
-        cv_score = cross_val_score(model, x_train, y_train, cv=5, scoring='r2').mean()
+        # Predictions
+        y_train_pred = model.predict(X_train)
+        y_test_pred = model.predict(X_test)
 
-        st.write("### 📈 Model Results")
-        st.write(f"**Train RMSE:** {train_rmse:.2f}")
-        st.write(f"**Test RMSE:** {test_rmse:.2f}")
-        st.write(f"**Train R²:** {train_r2:.3f}")
-        st.write(f"**Test R²:** {test_r2:.3f}")
-        st.write(f"**Cross Validation Score:** {cv_score:.3f}")
+        # Metrics
+        train_rmse = np.sqrt(mean_squared_error(y_train, y_train_pred))
+        test_rmse = np.sqrt(mean_squared_error(y_test, y_test_pred))
+        train_r2 = r2_score(y_train, y_train_pred)
+        test_r2 = r2_score(y_test, y_test_pred)
+        cv = cross_val_score(model, X_train, y_train, cv=5, scoring="r2").mean()
 
-        st.write("**Model Coefficients:**")
-        coef_df = pd.DataFrame({"Feature": x.columns, "Coefficient": model.coef_})
+        st.write("### 📈 Model Performance")
+        st.metric("Train RMSE", f"{train_rmse:.2f}")
+        st.metric("Test RMSE", f"{test_rmse:.2f}")
+        st.metric("Train R²", f"{train_r2:.3f}")
+        st.metric("Test R²", f"{test_r2:.3f}")
+        st.metric("CV Score", f"{cv:.3f}")
+
+        # Coefficients
+        st.write("### Feature Coefficients")
+        coef_df = pd.DataFrame({"Feature": X.columns, "Coefficient": model.coef_})
         st.dataframe(coef_df)
 
-        # Visualization of predictions
-        st.write("#### Predicted vs Actual (Test Data)")
+        # Plot Actual vs Predicted
+        st.write("### Predicted vs Actual (Test Set)")
         fig, ax = plt.subplots()
-        sns.scatterplot(x=y_test, y=y_pred_test, ax=ax)
+        sns.scatterplot(x=y_test, y=y_test_pred, ax=ax)
         plt.xlabel("Actual")
         plt.ylabel("Predicted")
         plt.title(f"{model_option} - Actual vs Predicted")
         st.pyplot(fig)
 
-    # ---------------------------------------------------------------
-    # FINAL PREDICTION SECTION
-    # ---------------------------------------------------------------
-    st.subheader("💡 STEP 5: Predict on New Data")
+        # Save model to session state
+        st.session_state["trained_model"] = model
+        st.session_state["X_columns"] = X.columns.tolist()
 
-    st.write("Enter patient details to predict medical expenses:")
-    age = st.number_input("Age", min_value=1, max_value=100, value=30)
-    bmi = st.number_input("BMI", min_value=10.0, max_value=60.0, value=25.5)
-    children = st.number_input("Number of Children", min_value=0, max_value=10, value=1)
-    sex = st.selectbox("Sex", ["male", "female"])
-    smoker = st.selectbox("Smoker", ["yes", "no"])
+    # ---------------------------------------------------------------
+    # STEP 6: PREDICT NEW DATA
+    # ---------------------------------------------------------------
+    st.subheader("💡 STEP 6: Predict on New Data")
 
-    if 'model' in locals():
-        input_data = pd.DataFrame({
-            'age': [age],
-            'sex': [1 if sex == 'male' else 0],
-            'bmi': [bmi],
-            'children': [children],
-            'smoker': [1 if smoker == 'yes' else 0]
-        })
+    if "trained_model" in st.session_state:
+        model = st.session_state["trained_model"]
+        st.write("Enter new patient details:")
+
+        age = st.number_input("Age", min_value=1, max_value=100, value=30)
+        bmi = st.number_input("BMI", min_value=10.0, max_value=60.0, value=25.5)
+        children = st.number_input("Children", min_value=0, max_value=10, value=1)
+        sex = st.selectbox("Sex", ["male", "female"])
+        smoker = st.selectbox("Smoker", ["yes", "no"])
 
         if st.button("🔮 Predict Expense"):
-            pred_expense = model.predict(input_data)[0]
-            st.success(f"💰 Predicted Medical Expense: ${pred_expense:,.2f}")
+            new_df = pd.DataFrame({
+                "age": [age],
+                "sex": [1 if sex == "male" else 0],
+                "bmi": [bmi],
+                "children": [children],
+                "smoker": [1 if smoker == "yes" else 0]
+            })
+            prediction = model.predict(new_df)[0]
+            st.success(f"💰 Predicted Medical Expense: ${prediction:,.2f}")
     else:
-        st.info("Train a model first to enable predictions.")
+        st.info("Train a model first to make predictions.")
 else:
     st.warning("👆 Please upload your Excel dataset to start analysis.")
+
