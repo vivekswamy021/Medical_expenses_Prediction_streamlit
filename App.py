@@ -1,132 +1,177 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import pickle
-import requests
-import io
 import matplotlib.pyplot as plt
 import seaborn as sns
+import joblib
+from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
+from sklearn.linear_model import LinearRegression, Lasso, Ridge, ElasticNet
 from sklearn.metrics import mean_squared_error, r2_score
+import warnings
+warnings.filterwarnings("ignore")
 
-# -------------------------------
-# CONFIGURATION
-# -------------------------------
-st.set_page_config(page_title="ML Model Dashboard", layout="wide")
+# -----------------------------
+# PAGE CONFIG
+# -----------------------------
+st.set_page_config(page_title="Medical Expenses Prediction", layout="wide")
+st.title("💊 Medical Expenses Prediction App")
+st.markdown("### Predict insurance costs using regression models")
 
-# Replace this with your actual GitHub raw base URL
-# Example: https://raw.githubusercontent.com/<username>/<repo>/main/
-GITHUB_BASE_URL = "https://raw.githubusercontent.com/<your-username>/<your-repo-name>/main/"
-
-MODEL_FILES = {
-    "Linear Regression": "linear_model.pkl",
-    "Lasso Regression": "lasso_model.pkl",
-    "Ridge Regression": "ridge_model.pkl",
-    "ElasticNet Regression": "elastic_model.pkl"
-}
-
-# -------------------------------
-# HELPER FUNCTIONS
-# -------------------------------
-
-@st.cache_resource
-def load_model_from_github(file_name):
-    """Load model pickle file from GitHub"""
-    url = GITHUB_BASE_URL + file_name
-    response = requests.get(url)
-    if response.status_code != 200:
-        st.error(f"Failed to load {file_name} from GitHub.")
-        return None
-    return pickle.load(io.BytesIO(response.content))
-
-def plot_residuals(y_true, y_pred):
-    residuals = y_true - y_pred
-    fig, ax = plt.subplots()
-    sns.histplot(residuals, kde=True, color="skyblue", ax=ax)
-    ax.set_title("Residuals Distribution")
-    st.pyplot(fig)
-
-def plot_actual_vs_pred(y_true, y_pred):
-    fig, ax = plt.subplots()
-    ax.scatter(y_true, y_pred, color='green')
-    ax.set_xlabel("Actual Values")
-    ax.set_ylabel("Predicted Values")
-    ax.set_title("Actual vs Predicted")
-    st.pyplot(fig)
-
-def plot_coefficients(model, feature_names):
-    fig, ax = plt.subplots(figsize=(8, 4))
-    coef_df = pd.DataFrame({"Feature": feature_names, "Coefficient": model.coef_})
-    sns.barplot(x="Coefficient", y="Feature", data=coef_df, ax=ax, palette="viridis")
-    ax.set_title("Model Feature Importance (Coefficients)")
-    st.pyplot(fig)
-
-# -------------------------------
-# APP UI
-# -------------------------------
-
-st.title("📊 ML Model Prediction Dashboard")
-
-with st.sidebar:
-    st.header("⚙️ Configuration")
-    selected_model_name = st.selectbox("Select Model", list(MODEL_FILES.keys()))
-    uploaded_file = st.file_uploader("Upload CSV File", type=["csv"])
-
-    if uploaded_file is not None:
-        df = pd.read_csv(uploaded_file)
-        st.success("✅ File uploaded successfully!")
-    else:
-        st.info("Upload a CSV file to start predictions.")
-        df = None
-
-# -------------------------------
-# LOAD MODEL
-# -------------------------------
-model = load_model_from_github(MODEL_FILES[selected_model_name])
-
-if model is not None and df is not None:
-    st.subheader("📄 Uploaded Data Preview")
+# -----------------------------
+# FILE UPLOAD
+# -----------------------------
+uploaded_file = st.file_uploader("📤 Upload your insurance.xlsx file", type=["xlsx"])
+if uploaded_file:
+    df = pd.read_excel(uploaded_file)
+    st.success("✅ File uploaded successfully!")
+    
+    st.subheader("📊 Data Overview")
     st.dataframe(df.head())
 
-    # Assuming last column is the target variable
-    target_col = st.selectbox("Select Target Column (if available)", options=df.columns)
-    X = df.drop(columns=[target_col])
-    y = df[target_col]
+    # -----------------------------
+    # DATA UNDERSTANDING
+    # -----------------------------
+    with st.expander("🔍 Dataset Info"):
+        buf = []
+        df.info(buf=buf)
+        s = "\n".join(buf)
+        st.text(s)
+        st.write("**Shape:**", df.shape)
+        st.write("**Columns:**", list(df.columns))
+        st.write("**Missing Values:**")
+        st.write(df.isnull().sum())
 
-    # Predictions
-    y_pred = model.predict(X)
+    # -----------------------------
+    # EDA SECTION
+    # -----------------------------
+    st.subheader("📈 Exploratory Data Analysis")
+    continous = ['age','bmi','expenses']
+    discrete_categorical = ['sex','smoker','region']
+    discrete_count = ['children']
 
-    st.subheader("📈 Prediction Results")
-    result_df = df.copy()
-    result_df["Predicted"] = y_pred
-    st.dataframe(result_df.head())
+    st.write("**Continuous Features Summary:**")
+    st.dataframe(df[continous].describe())
 
-    # -------------------------------
-    # METRICS
-    # -------------------------------
-    mse = mean_squared_error(y, y_pred)
-    r2 = r2_score(y, y_pred)
-    st.metric("R² Score", f"{r2:.4f}")
-    st.metric("MSE", f"{mse:.4f}")
+    st.write("**Categorical Features Summary:**")
+    st.dataframe(df[discrete_categorical].describe())
 
-    # -------------------------------
-    # VISUALIZATIONS
-    # -------------------------------
-    st.subheader("📊 Charts and Visualizations")
+    # Correlation heatmap
+    fig, ax = plt.subplots()
+    sns.heatmap(df[continous].corr(), annot=True, cmap="coolwarm", ax=ax)
+    st.pyplot(fig)
 
-    col1, col2 = st.columns(2)
+    # Pairplot
+    st.write("**Pairplot:**")
+    sns.pairplot(df[continous])
+    st.pyplot(plt)
+
+    # Scatterplot BMI vs Expenses
+    fig, ax = plt.subplots()
+    sns.scatterplot(x=df['bmi'], y=df['expenses'], hue=df['sex'], ax=ax)
+    st.pyplot(fig)
+
+    # -----------------------------
+    # DATA CLEANING & ENCODING
+    # -----------------------------
+    st.subheader("🧹 Data Preprocessing")
+
+    st.write("Dropping duplicates...")
+    df.drop_duplicates(inplace=True)
+
+    st.write("Encoding categorical columns...")
+    df['sex'].replace({'male':1,'female':0},inplace=True)
+    df['smoker'].replace({'yes':1,'no':0},inplace=True)
+
+    st.write("Dropping 'region' column...")
+    df.drop('region', axis=1, inplace=True)
+
+    st.success("✅ Data cleaned and encoded successfully!")
+
+    # -----------------------------
+    # TRAIN TEST SPLIT
+    # -----------------------------
+    x = df.drop('expenses', axis=1)
+    y = df['expenses']
+    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=9)
+
+    # -----------------------------
+    # MODEL TRAINING
+    # -----------------------------
+    st.subheader("🏋️ Model Training and Evaluation")
+
+    model_choice = st.selectbox("Choose a model to train", ["Linear Regression", "Lasso Regression", "Ridge Regression", "ElasticNet Regression"])
+
+    if model_choice == "Linear Regression":
+        model = LinearRegression()
+        model.fit(x_train, y_train)
+        y_pred_train = model.predict(x_train)
+        y_pred_test = model.predict(x_test)
+
+    elif model_choice == "Lasso Regression":
+        model = Lasso(alpha=60)
+        model.fit(x_train, y_train)
+        y_pred_train = model.predict(x_train)
+        y_pred_test = model.predict(x_test)
+
+    elif model_choice == "Ridge Regression":
+        model = Ridge(alpha=1)
+        model.fit(x_train, y_train)
+        y_pred_train = model.predict(x_train)
+        y_pred_test = model.predict(x_test)
+
+    elif model_choice == "ElasticNet Regression":
+        model = ElasticNet(alpha=10, l1_ratio=1)
+        model.fit(x_train, y_train)
+        y_pred_train = model.predict(x_train)
+        y_pred_test = model.predict(x_test)
+
+    # -----------------------------
+    # MODEL PERFORMANCE
+    # -----------------------------
+    train_rmse = np.sqrt(mean_squared_error(y_train, y_pred_train))
+    test_rmse = np.sqrt(mean_squared_error(y_test, y_pred_test))
+    train_r2 = r2_score(y_train, y_pred_train)
+    test_r2 = r2_score(y_test, y_pred_test)
+    cv_score = cross_val_score(model, x_train, y_train, cv=5, scoring='r2').mean()
+
+    st.write("### 📊 Model Performance")
+    st.write(f"**Train RMSE:** {train_rmse:.2f}")
+    st.write(f"**Test RMSE:** {test_rmse:.2f}")
+    st.write(f"**Train R2:** {train_r2:.3f}")
+    st.write(f"**Test R2:** {test_r2:.3f}")
+    st.write(f"**Cross Validation (CV) R2:** {cv_score:.3f}")
+
+    # -----------------------------
+    # SAVE MODEL
+    # -----------------------------
+    filename = model_choice.lower().replace(" ", "_") + ".pkl"
+    joblib.dump(model, filename)
+    with open(filename, "rb") as f:
+        st.download_button(label=f"💾 Download {model_choice} Model", data=f, file_name=filename)
+
+    # -----------------------------
+    # PREDICTION SECTION
+    # -----------------------------
+    st.subheader("🧮 Predict New Data")
+    st.markdown("Enter patient details to predict medical expenses")
+
+    col1, col2, col3 = st.columns(3)
     with col1:
-        plot_actual_vs_pred(y, y_pred)
+        age = st.number_input("Age", min_value=0, max_value=100, value=30)
+        bmi = st.number_input("BMI", min_value=10.0, max_value=60.0, value=25.0)
     with col2:
-        plot_residuals(y, y_pred)
+        children = st.number_input("Children", min_value=0, max_value=10, value=0)
+        sex = st.selectbox("Sex", ["male", "female"])
+    with col3:
+        smoker = st.selectbox("Smoker", ["yes", "no"])
 
-    st.subheader("📉 Model Coefficients")
-    plot_coefficients(model, X.columns)
+    sex_val = 1 if sex == "male" else 0
+    smoker_val = 1 if smoker == "yes" else 0
+
+    input_data = np.array([[age, sex_val, bmi, children, smoker_val]])
+    if st.button("🔮 Predict Expenses"):
+        prediction = model.predict(input_data)[0]
+        st.success(f"💰 Predicted Medical Expense: **${prediction:.2f}**")
 
 else:
-    st.warning("👈 Please upload a dataset and select a model to continue.")
-
-# -------------------------------
-# FOOTER
-# -------------------------------
-st.markdown("---")
-st.caption("Built with ❤️ using Streamlit, Matplotlib, and scikit-learn.")
+    st.warning("👆 Please upload the `insurance.xlsx` file to start.")
