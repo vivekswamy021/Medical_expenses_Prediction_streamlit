@@ -1,186 +1,132 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import seaborn as sns
+import pickle
+import requests
+import io
 import matplotlib.pyplot as plt
-import joblib
-from sklearn.metrics import r2_score, mean_squared_error
-import warnings
-warnings.filterwarnings("ignore")
+import seaborn as sns
+from sklearn.metrics import mean_squared_error, r2_score
 
-st.set_page_config(page_title="Medical Expense Prediction Dashboard", page_icon="💰", layout="wide")
+# -------------------------------
+# CONFIGURATION
+# -------------------------------
+st.set_page_config(page_title="ML Model Dashboard", layout="wide")
 
-# ------------------------------------------------
-# Title
-# ------------------------------------------------
-st.title("💰 Medical Expense Prediction Dashboard")
-st.markdown("""
-This Streamlit app predicts **medical expenses** based on patient details  
-and visualizes **EDA insights** using charts from your ML notebook.
+# Replace this with your actual GitHub raw base URL
+# Example: https://raw.githubusercontent.com/<username>/<repo>/main/
+GITHUB_BASE_URL = "https://raw.githubusercontent.com/<your-username>/<your-repo-name>/main/"
 
----
+MODEL_FILES = {
+    "Linear Regression": "linear_model.pkl",
+    "Lasso Regression": "lasso_model.pkl",
+    "Ridge Regression": "ridge_model.pkl",
+    "ElasticNet Regression": "elastic_model.pkl"
+}
 
-### Models Used
-- **Linear Regression**
-- **Lasso Regression**
-- **Ridge Regression**
-- **Elastic Net**
-""")
+# -------------------------------
+# HELPER FUNCTIONS
+# -------------------------------
 
-# ------------------------------------------------
-# Sidebar Upload Section
-# ------------------------------------------------
-st.sidebar.header("⚙️ Upload Data and Models")
-
-data_file = st.sidebar.file_uploader("Upload `insurance.xlsx`", type=["xlsx"])
-if data_file is not None:
-    df = pd.read_excel(data_file)
-else:
-    st.sidebar.warning("Upload insurance.xlsx to visualize EDA.")
-    df = None
-
-# Model upload
-st.sidebar.subheader("Upload Model Files (.pkl)")
-linear_model_file = st.sidebar.file_uploader("Linear Model", type=["pkl"])
-lasso_model_file = st.sidebar.file_uploader("Lasso Model", type=["pkl"])
-ridge_model_file = st.sidebar.file_uploader("Ridge Model", type=["pkl"])
-elastic_model_file = st.sidebar.file_uploader("ElasticNet Model", type=["pkl"])
-
-# Load default or uploaded models
-def load_model(file, default_name):
-    try:
-        if file is not None:
-            return joblib.load(file)
-        return joblib.load(default_name)
-    except:
+@st.cache_resource
+def load_model_from_github(file_name):
+    """Load model pickle file from GitHub"""
+    url = GITHUB_BASE_URL + file_name
+    response = requests.get(url)
+    if response.status_code != 200:
+        st.error(f"Failed to load {file_name} from GitHub.")
         return None
+    return pickle.load(io.BytesIO(response.content))
 
-linear_model = load_model(linear_model_file, "linear_model.pkl")
-lasso_model = load_model(lasso_model_file, "lasso_model.pkl")
-ridge_model = load_model(ridge_model_file, "ridge_model.pkl")
-elastic_model = load_model(elastic_model_file, "elastic_model.pkl")
+def plot_residuals(y_true, y_pred):
+    residuals = y_true - y_pred
+    fig, ax = plt.subplots()
+    sns.histplot(residuals, kde=True, color="skyblue", ax=ax)
+    ax.set_title("Residuals Distribution")
+    st.pyplot(fig)
 
-# ------------------------------------------------
-# Tabs for EDA and Prediction
-# ------------------------------------------------
-tab1, tab2 = st.tabs(["📊 Data Visualization (EDA)", "🔮 Predict Medical Expenses"])
+def plot_actual_vs_pred(y_true, y_pred):
+    fig, ax = plt.subplots()
+    ax.scatter(y_true, y_pred, color='green')
+    ax.set_xlabel("Actual Values")
+    ax.set_ylabel("Predicted Values")
+    ax.set_title("Actual vs Predicted")
+    st.pyplot(fig)
 
-# =========================================================
-# 📊 TAB 1 — EDA VISUALIZATION
-# =========================================================
-with tab1:
-    st.header("📊 Exploratory Data Analysis")
+def plot_coefficients(model, feature_names):
+    fig, ax = plt.subplots(figsize=(8, 4))
+    coef_df = pd.DataFrame({"Feature": feature_names, "Coefficient": model.coef_})
+    sns.barplot(x="Coefficient", y="Feature", data=coef_df, ax=ax, palette="viridis")
+    ax.set_title("Model Feature Importance (Coefficients)")
+    st.pyplot(fig)
 
-    if df is not None:
-        st.subheader("Basic Data Overview")
-        st.dataframe(df.head())
+# -------------------------------
+# APP UI
+# -------------------------------
 
-        continous = ['age', 'bmi', 'expenses']
-        discrete_categorical = ['sex', 'smoker', 'region']
+st.title("📊 ML Model Prediction Dashboard")
 
-        st.markdown("### 🧾 Summary Statistics")
-        st.write(df[continous].describe())
+with st.sidebar:
+    st.header("⚙️ Configuration")
+    selected_model_name = st.selectbox("Select Model", list(MODEL_FILES.keys()))
+    uploaded_file = st.file_uploader("Upload CSV File", type=["csv"])
 
-        st.markdown("### 🧍‍♂️ Categorical Summary")
-        st.write(df[discrete_categorical].describe())
-
-        # Pairplot
-        st.subheader("Pairplot for Continuous Features")
-        sns.pairplot(df[continous])
-        st.pyplot(plt.gcf())
-        plt.clf()
-
-        # Correlation heatmap
-        st.subheader("Heatmap of Continuous Features")
-        corr = df[continous].corr()
-        plt.figure(figsize=(5, 4))
-        sns.heatmap(corr, annot=True, cmap="coolwarm")
-        st.pyplot(plt.gcf())
-        plt.clf()
-
-        # Scatter sex vs expenses
-        st.subheader("Expenses by Gender")
-        plt.figure(figsize=(5, 4))
-        sns.scatterplot(x='sex', y='expenses', data=df)
-        st.pyplot(plt.gcf())
-        plt.clf()
-
-        # Histogram for sex
-        st.subheader("Distribution of Gender")
-        plt.figure(figsize=(5, 4))
-        sns.histplot(df['sex'])
-        st.pyplot(plt.gcf())
-        plt.clf()
-
-        # BMI vs expenses with hue=sex
-        st.subheader("BMI vs Expenses by Gender")
-        plt.figure(figsize=(5, 4))
-        sns.scatterplot(x='bmi', y='expenses', hue='sex', data=df)
-        st.pyplot(plt.gcf())
-        plt.clf()
-
+    if uploaded_file is not None:
+        df = pd.read_csv(uploaded_file)
+        st.success("✅ File uploaded successfully!")
     else:
-        st.warning("Please upload your `insurance.xlsx` file to view EDA visualizations.")
+        st.info("Upload a CSV file to start predictions.")
+        df = None
 
-# =========================================================
-# 🔮 TAB 2 — MODEL PREDICTIONS
-# =========================================================
-with tab2:
-    st.header("🔮 Medical Expense Prediction")
+# -------------------------------
+# LOAD MODEL
+# -------------------------------
+model = load_model_from_github(MODEL_FILES[selected_model_name])
 
-    col1, col2, col3 = st.columns(3)
+if model is not None and df is not None:
+    st.subheader("📄 Uploaded Data Preview")
+    st.dataframe(df.head())
 
+    # Assuming last column is the target variable
+    target_col = st.selectbox("Select Target Column (if available)", options=df.columns)
+    X = df.drop(columns=[target_col])
+    y = df[target_col]
+
+    # Predictions
+    y_pred = model.predict(X)
+
+    st.subheader("📈 Prediction Results")
+    result_df = df.copy()
+    result_df["Predicted"] = y_pred
+    st.dataframe(result_df.head())
+
+    # -------------------------------
+    # METRICS
+    # -------------------------------
+    mse = mean_squared_error(y, y_pred)
+    r2 = r2_score(y, y_pred)
+    st.metric("R² Score", f"{r2:.4f}")
+    st.metric("MSE", f"{mse:.4f}")
+
+    # -------------------------------
+    # VISUALIZATIONS
+    # -------------------------------
+    st.subheader("📊 Charts and Visualizations")
+
+    col1, col2 = st.columns(2)
     with col1:
-        age = st.number_input("Age", min_value=1, max_value=100, value=35)
-        bmi = st.number_input("BMI", min_value=10.0, max_value=50.0, value=28.5)
-
+        plot_actual_vs_pred(y, y_pred)
     with col2:
-        sex = st.selectbox("Sex", ["male", "female"])
-        smoker = st.selectbox("Smoker", ["yes", "no"])
+        plot_residuals(y, y_pred)
 
-    with col3:
-        children = st.number_input("Children", min_value=0, max_value=10, value=2)
-        region = st.selectbox("Region", ["southeast", "southwest", "northeast", "northwest"])
+    st.subheader("📉 Model Coefficients")
+    plot_coefficients(model, X.columns)
 
-    def preprocess(age, sex, bmi, children, smoker):
-        df = pd.DataFrame({
-            'age': [age],
-            'sex': [1 if sex == 'male' else 0],
-            'bmi': [bmi],
-            'children': [children],
-            'smoker': [1 if smoker == 'yes' else 0]
-        })
-        return df
+else:
+    st.warning("👈 Please upload a dataset and select a model to continue.")
 
-    if st.button("💡 Predict Expenses"):
-        df_input = preprocess(age, sex, bmi, children, smoker)
-
-        st.subheader("🧾 Input Data")
-        st.dataframe(df_input)
-
-        # Predictions
-        preds = {}
-        if linear_model:
-            preds["Linear Regression"] = round(linear_model.predict(df_input)[0], 2)
-        if lasso_model:
-            preds["Lasso Regression"] = round(lasso_model.predict(df_input.drop(columns=['sex'], errors='ignore'))[0], 2)
-        if ridge_model:
-            preds["Ridge Regression"] = round(ridge_model.predict(df_input)[0], 2)
-        if elastic_model:
-            preds["Elastic Net"] = round(elastic_model.predict(df_input)[0], 2)
-
-        results_df = pd.DataFrame(list(preds.items()), columns=["Model", "Predicted Expense ($)"])
-        st.subheader("💰 Model Predictions")
-        st.table(results_df)
-
-        # Visualization: Comparison Chart
-        st.subheader("📈 Model Comparison Chart")
-        fig, ax = plt.subplots(figsize=(6, 4))
-        sns.barplot(x="Model", y="Predicted Expense ($)", data=results_df, ax=ax, palette="viridis")
-        plt.xticks(rotation=15)
-        st.pyplot(fig)
-
-        best_model = max(preds, key=preds.get)
-        st.success(f"✅ Best Model: **{best_model}** (${preds[best_model]})")
-
+# -------------------------------
+# FOOTER
+# -------------------------------
 st.markdown("---")
+st.caption("Built with ❤️ using Streamlit, Matplotlib, and scikit-learn.")
