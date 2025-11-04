@@ -113,7 +113,7 @@ st.table(input_dict)
 st.sidebar.header("⚙️ Choose Model")
 
 available_models = {
-    "Linear Regression": "linear_regression_model.joblib",
+    "Linear Regression": "linear_model.joblib",
     "Lasso Regression": "lasso_model.joblib",
     "Ridge Regression": "ridge_model.joblib",
     "ElasticNet Regression": "elasticnet_model.joblib"
