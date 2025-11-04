@@ -22,12 +22,7 @@ st.markdown("### Predict medical expenses based on patient's profile using Regre
 # ---------------------------------------------------------------
 st.subheader("📘 STEP 1: Business Problem Understanding")
 st.write("""
-Predict patient medical expenses based on demographic and lifestyle factors such as:
-- Age
-- Sex
-- BMI
-- Smoking status
-- Number of children
+Predict patient medical expenses based on demographic and lifestyle factors
 """)
 
 # ---------------------------------------------------------------
@@ -43,18 +38,6 @@ if uploaded_file:
 
     st.write("### 📋 Dataset Preview")
     st.dataframe(df.head())
-
-    # DATA UNDERSTANDING
-    st.subheader("🔍 Data Understanding")
-    buffer = io.StringIO()
-    df.info(buf=buffer)
-    s = buffer.getvalue()
-    st.text(s)
-
-    st.write("**Shape:**", df.shape)
-    st.write("**Columns:**", list(df.columns))
-    st.write("**Null Values:**", df.isnull().sum().sum())
-    st.write("**Duplicate Rows:**", df.duplicated().sum())
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -111,25 +94,12 @@ if uploaded_file:
     st.write("✅ Cleaned Data Preview")
     st.dataframe(df.head())
 
-    # ---------------------------------------------------------------
-    # STEP 5: MODEL TRAINING
-    # ---------------------------------------------------------------
-    st.subheader("🤖 STEP 5: Model Training")
-
-    X = df.drop("expenses", axis=1)
-    y = df["expenses"]
-
-    test_size = st.slider("Test Size", 0.1, 0.5, 0.2)
-    random_state = st.number_input("Random State", min_value=0, max_value=100, value=9, step=1)
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
-
+  
     model_option = st.selectbox(
         "Select Regression Model",
         ["Linear Regression", "Lasso Regression", "Ridge Regression", "ElasticNet Regression"]
     )
 
-    if st.button("🚀 Train Model"):
         # Model selection
         if model_option == "Linear Regression":
             model = LinearRegression()
@@ -147,31 +117,6 @@ if uploaded_file:
             l1_ratio = st.select_slider("L1 Ratio", options=[0.2, 0.4, 0.6, 0.8, 1.0], value=1.0)
             model = ElasticNet(alpha=alpha, l1_ratio=l1_ratio)
 
-        # Fit model
-        model.fit(X_train, y_train)
-
-        # Predictions
-        y_train_pred = model.predict(X_train)
-        y_test_pred = model.predict(X_test)
-
-        # Metrics
-        train_rmse = np.sqrt(mean_squared_error(y_train, y_train_pred))
-        test_rmse = np.sqrt(mean_squared_error(y_test, y_test_pred))
-        train_r2 = r2_score(y_train, y_train_pred)
-        test_r2 = r2_score(y_test, y_test_pred)
-        cv = cross_val_score(model, X_train, y_train, cv=5, scoring="r2").mean()
-
-        st.write("### 📈 Model Performance")
-        st.metric("Train RMSE", f"{train_rmse:.2f}")
-        st.metric("Test RMSE", f"{test_rmse:.2f}")
-        st.metric("Train R²", f"{train_r2:.3f}")
-        st.metric("Test R²", f"{test_r2:.3f}")
-        st.metric("CV Score", f"{cv:.3f}")
-
-        # Coefficients
-        st.write("### Feature Coefficients")
-        coef_df = pd.DataFrame({"Feature": X.columns, "Coefficient": model.coef_})
-        st.dataframe(coef_df)
 
         # Plot Actual vs Predicted
         st.write("### Predicted vs Actual (Test Set)")
