@@ -4,15 +4,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import joblib
-import requests
-from io import BytesIO
+import os
 
 st.set_page_config(page_title="💰 Medical Expense Prediction", layout="wide")
 
-st.title("💰 Medical Expense Prediction & EDA Dashboard")
+st.title("💰 Medical Expense Prediction & EDA")
 st.markdown("""
-Predict insurance expenses using pre-trained ML models (Linear, Lasso, Ridge, ElasticNet)  
-and explore the insurance dataset interactively.
+Predict medical expenses based on patient details using pre-trained models:  
+**Linear Regression, Lasso, Ridge, ElasticNet**.
 """)
 
 # -----------------------------
@@ -28,7 +27,7 @@ if uploaded_file:
         else:
             df = pd.read_csv(uploaded_file)
 
-        # Preprocessing: drop region, encode categorical columns
+        # Preprocessing
         if 'region' in df.columns:
             df.drop('region', axis=1, inplace=True)
         if 'sex' in df.columns:
@@ -39,9 +38,7 @@ if uploaded_file:
         st.header("🔍 Dataset Preview")
         st.dataframe(df.head())
 
-        # -----------------------------
-        # STEP 2: EDA
-        # -----------------------------
+        # EDA
         st.sidebar.header("📊 EDA Options")
         analysis_type = st.sidebar.selectbox(
             "Select Analysis Type",
@@ -83,7 +80,7 @@ if uploaded_file:
         st.error(f"Error reading dataset: {e}")
 
 # -----------------------------
-# STEP 3: USER INPUT FORM
+# STEP 2: USER INPUT
 # -----------------------------
 st.sidebar.header("🧍 Enter Patient Details")
 
@@ -107,11 +104,11 @@ st.table({
 })
 
 # -----------------------------
-# STEP 4: MODEL SELECTION
+# STEP 3: MODEL SELECTION
 # -----------------------------
 st.sidebar.header("⚙️ Choose Model")
 
-# **GitHub raw URLs for your .pkl models**
+# Local .pkl files
 available_models = {
     "Linear Regression": "linear_model.pkl",
     "Lasso Regression": "lasso_model.pkl",
@@ -120,19 +117,21 @@ available_models = {
 }
 
 model_choice = st.sidebar.selectbox("Select Model", list(available_models.keys()))
-model_url = available_models[model_choice]
+model_file = available_models[model_choice]
 
 # -----------------------------
-# STEP 5: LOAD MODEL & PREDICT
+# STEP 4: LOAD MODEL & PREDICT
 # -----------------------------
 st.header("📂 Prediction")
 
-try:
-    response = requests.get(model_url)
-    response.raise_for_status()
-    model = joblib.load(BytesIO(response.content))
-except Exception as e:
-    st.error(f"Error loading model: {e}")
+if os.path.exists(model_file):
+    try:
+        model = joblib.load(model_file)
+    except Exception as e:
+        st.error(f"Error loading model: {e}")
+        st.stop()
+else:
+    st.warning(f"Model file not found: {model_file}. Make sure it is in the app folder.")
     st.stop()
 
 if st.button("🔮 Predict Medical Expense"):
