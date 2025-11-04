@@ -111,10 +111,10 @@ st.table(input_dict)
 st.sidebar.header("⚙️ Choose Model")
 
 available_models = {
-    "Linear Regression": "linear_regression_model.pkl",
+    "Linear Regression": "linear_model.pkl",
     "Lasso Regression": "lasso_model.pkl",
     "Ridge Regression": "ridge_model.pkl",
-    "ElasticNet Regression": "elasticnet_model.pkl"
+    "ElasticNet Regression": "elastic_model.pkl"
 }
 
 model_choice = st.sidebar.selectbox("Select Model", list(available_models.keys()))
